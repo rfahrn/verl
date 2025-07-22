@@ -10,11 +10,14 @@ python examples/data_preprocess/mimic_mm.py /path/to/dataset.json --local_dir SC
 
 **Option 1: Process directly from LLaVA JSON (RECOMMENDED)**
 ```
-# Process your all_train_llava.json directly to VERL format:
-python examples/data_preprocess/llava_json_to_verl_iou.py /path/to/all_train_llava.json --local_dir SCRATCH/<username>/data/verl_grounding_iou
+# Process your all_train_llava.json directly to VERL format (ROBUST VERSION):
+python examples/data_preprocess/llava_json_to_verl_iou_robust.py /path/to/all_train_llava.json --local_dir SCRATCH/<username>/data/verl_grounding_iou
 
 # Filter for specific datasets only (e.g., VinDr-CXR):
-python examples/data_preprocess/llava_json_to_verl_iou.py /path/to/all_train_llava.json --local_dir SCRATCH/<username>/data/verl_grounding_iou --dataset_filter vindr-cxr vindr-cxr-mono
+python examples/data_preprocess/llava_json_to_verl_iou_robust.py /path/to/all_train_llava.json --local_dir SCRATCH/<username>/data/verl_grounding_iou --dataset_filter vindr-cxr vindr-cxr-mono
+
+# Adjust batch size if you have memory issues:
+python examples/data_preprocess/llava_json_to_verl_iou_robust.py /path/to/all_train_llava.json --local_dir SCRATCH/<username>/data/verl_grounding_iou --batch_size 5000
 
 # Alternative scripts for other formats:
 python examples/data_preprocess/grounding_iou.py /path/to/dataset.json --local_dir SCRATCH/<username>/data/grounding_iou
