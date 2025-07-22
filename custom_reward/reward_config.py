@@ -9,6 +9,7 @@ from typing import Dict, Any
 # Available reward functions
 REWARD_FUNCTIONS = {
     "basic_iou": "custom_reward/iou_reward.py",
+    "giou": "custom_reward/giou_reward.py",
     "enhanced_medical": "custom_reward/enhanced_medical_reward.py"
 }
 
@@ -190,13 +191,22 @@ def print_reward_comparison():
     print("   ✅ Simple and fast")
     print("   ✅ Pure spatial accuracy (IOU)")
     print("   ✅ Handles 'no finding' cases")
+    print("   ❌ Zero gradient for non-overlapping boxes")
     print("   ❌ No medical knowledge integration")
-    print("   ❌ No reasoning evaluation")
-    print("   📈 Best for: Quick testing, pure localization tasks")
+    print("   📈 Best for: Quick testing, baseline comparison")
+    
+    print("\n📐 GIOU REWARD (giou_reward.py)")
+    print("   ✅ Addresses IoU's main weakness")
+    print("   ✅ Meaningful scores for non-overlapping boxes")
+    print("   ✅ Always differentiable (provides gradient)")
+    print("   ✅ Scale-invariant like IoU")
+    print("   ✅ Handles 'no finding' cases")
+    print("   ✅ Simple improvement over basic IoU")
+    print("   📈 Best for: Better localization training, general use")
     
     print("\n🧠 ENHANCED MEDICAL REWARD (enhanced_medical_reward.py)")
     print("   ✅ Multi-criteria evaluation:")
-    print("      • Spatial accuracy (IOU)")
+    print("      • Spatial accuracy (GIoU-based)")
     print("      • Medical terminology usage")
     print("      • Anatomical context awareness")
     print("      • Clinical reasoning quality")

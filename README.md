@@ -52,6 +52,25 @@ Simple spatial accuracy evaluation:
 - **Partial box overlap**: IOU score (0.0-1.0 based on overlap)
 - **Correct "no finding"**: 0.8 score (when ground truth is empty and model says "no abnormalities")
 - **Incorrect predictions**: 0.0 score (false positives or false negatives)
+- **⚠️ Limitation**: Zero gradient for non-overlapping boxes (no learning signal)
+
+#### 📐 GIoU Reward (`custom_reward/giou_reward.py`) - **Recommended**
+**Based on "Generalized Intersection over Union" (Stanford, CVPR 2019)**
+
+Addresses IoU's main weakness by providing meaningful scores for non-overlapping boxes:
+
+**Key Improvements:**
+- **Always differentiable**: Provides gradient even when boxes don't overlap
+- **Distance-aware**: Closer non-overlapping boxes get better scores than distant ones
+- **Scale-invariant**: Maintains IoU's desirable properties
+- **Proven effective**: Used successfully in YOLO v3, Faster R-CNN, Mask R-CNN
+
+**GIoU Formula:** `GIoU = IoU - |C \ (A ∪ B)| / |C|`
+Where C is the smallest box enclosing both predicted and ground truth boxes.
+
+**Example advantage:**
+- IoU: Both `[0.1,0.1,0.3,0.3]` and `[0.4,0.4,0.6,0.6]` vs GT `[0.7,0.7,0.9,0.9]` → 0.0
+- GIoU: Closer box gets -0.680, distant box gets -0.875 (provides learning direction!)
 
 #### 🧠 Enhanced Medical Reward (`custom_reward/enhanced_medical_reward.py`)
 **Inspired by "Enhancing Abnormality Grounding for Vision Language Models with Knowledge Descriptions" (arXiv:2503.03278)**
@@ -116,21 +135,27 @@ Both scripts will:
 
 ### Choosing Your Reward Function
 
-#### Quick Setup with Enhanced Medical Reward (Recommended)
+#### Quick Setup (Choose Your Reward Function)
 ```bash
-# Generate SLURM scripts for both reward functions
+# Generate SLURM scripts for all reward functions
 python3 custom_reward/reward_config.py
 
-# Use enhanced medical reward (best for clinical applications)
+# Recommended: GIoU reward (simple improvement over IoU)
+sbatch jobs/single_node_giou.sh
+
+# Advanced: Enhanced medical reward (best for clinical applications)
 sbatch jobs/single_node_enhanced.sh
 
-# Or use basic IOU reward (faster, good for testing)
+# Baseline: Basic IOU reward (for comparison)
 sbatch jobs/single_node_basic.sh
 ```
 
 #### Manual Configuration
 In your SLURM script, set:
 ```bash
+# For GIoU reward (recommended)
+custom_reward_function.path=$WORK_DIR/custom_reward/giou_reward.py
+
 # For enhanced medical reward
 custom_reward_function.path=$WORK_DIR/custom_reward/enhanced_medical_reward.py
 
