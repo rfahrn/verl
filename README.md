@@ -8,15 +8,16 @@ python examples/data_preprocess/mimic_mm.py /path/to/dataset.json --local_dir SC
 
 ### For grounding tasks (IOU reward):
 
-**Option 1: Process directly from LLaVA JSON**
+**Option 1: Process directly from LLaVA JSON (RECOMMENDED)**
 ```
-# For all grounding tasks in the dataset:
+# Process your all_train_llava.json directly to VERL format:
+python examples/data_preprocess/llava_json_to_verl_iou.py /path/to/all_train_llava.json --local_dir SCRATCH/<username>/data/verl_grounding_iou
+
+# Filter for specific datasets only (e.g., VinDr-CXR):
+python examples/data_preprocess/llava_json_to_verl_iou.py /path/to/all_train_llava.json --local_dir SCRATCH/<username>/data/verl_grounding_iou --dataset_filter vindr-cxr vindr-cxr-mono
+
+# Alternative scripts for other formats:
 python examples/data_preprocess/grounding_iou.py /path/to/dataset.json --local_dir SCRATCH/<username>/data/grounding_iou
-
-# For specific dataset prefixes (e.g., VinDr-CXR only):
-python examples/data_preprocess/grounding_iou.py /path/to/dataset.json --local_dir SCRATCH/<username>/data/vindr_grounding --dataset_filter "vindr-cxr"
-
-# Alternative VinDr-specific script:
 python examples/data_preprocess/vindr_grounding_iou.py /path/to/dataset.json --local_dir SCRATCH/<username>/data/vindr_grounding_iou
 ```
 
@@ -34,8 +35,14 @@ The reward function that worked for me using BLEU metric was created here: `cust
 
 ### IOU Reward for Grounding Tasks
 The IOU reward function computes the Intersection over Union between predicted and ground truth bounding boxes. It expects:
-- Ground truth: List of bounding boxes in format `[[x1, y1, x2, y2], ...]`
-- Model output: Text containing bounding boxes in the `<answer>` section with format `[x1, y1, x2, y2]` 
+- Ground truth: List of bounding boxes in format `[[x1, y1, x2, y2], ...]` or empty list `[]` for "no finding" cases
+- Model output: Text containing bounding boxes in the `<answer>` section with format `[x1, y1, x2, y2]`
+
+**Scoring logic:**
+- **Perfect box match**: 1.0 score
+- **Partial box overlap**: IOU score (0.0-1.0 based on overlap)
+- **Correct "no finding"**: 0.8 score (when ground truth is empty and model says "no abnormalities")
+- **Incorrect predictions**: 0.0 score (false positives or false negatives) 
 
 ## Slurm script 
 You will find what worked for me until now for running GRPO in `jobs` folder. 

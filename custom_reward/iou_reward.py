@@ -10,6 +10,7 @@ def compute_score(data_source: str, solution_str: str, ground_truth: Any, extra_
     Params follow veRL's RewardManager contract:
     - solution_str: detokenized LLM output for one sample
     - ground_truth: list of ground truth bounding boxes in format [[x1, y1, x2, y2], ...]
+                   or empty list [] for "no finding" cases
     - extra_info: additional information (not used currently)
     
     Returns:
@@ -18,13 +19,31 @@ def compute_score(data_source: str, solution_str: str, ground_truth: Any, extra_
     # Extract bounding boxes from the answer section
     predicted_boxes = extract_bounding_boxes_from_answer(solution_str)
     
-    if not predicted_boxes:
+    # Handle ground truth validation
+    if not isinstance(ground_truth, list):
         return 0.0
     
-    if not ground_truth or not isinstance(ground_truth, list):
-        return 0.0
+    # Case 1: No ground truth boxes (e.g., "No finding" cases)
+    if len(ground_truth) == 0:
+        # If model correctly predicts no boxes, give partial reward
+        if len(predicted_boxes) == 0:
+            # Check if the model explicitly says "no finding" or similar
+            answer_content = extract_answer_content(solution_str)
+            if answer_content and any(phrase in answer_content.lower() for phrase in [
+                'no finding', 'no abnormalities', 'no lesions', 'clear', 'normal', 
+                'no detectable', 'no visible', 'clean bill'
+            ]):
+                return 0.8  # High reward for correctly identifying no findings
+            else:
+                return 0.3  # Lower reward for predicting no boxes without explicit statement
+        else:
+            return 0.0  # Penalty for predicting boxes when there should be none
     
-    # Compute maximum IOU between any predicted box and any ground truth box
+    # Case 2: Ground truth has boxes
+    if len(predicted_boxes) == 0:
+        return 0.0  # No predicted boxes when there should be some
+    
+    # Case 3: Both ground truth and predictions have boxes - compute IOU
     max_iou = 0.0
     for pred_box in predicted_boxes:
         for gt_box in ground_truth:
@@ -32,6 +51,16 @@ def compute_score(data_source: str, solution_str: str, ground_truth: Any, extra_
             max_iou = max(max_iou, iou)
     
     return max_iou
+
+
+def extract_answer_content(solution_str: str) -> str:
+    """
+    Extract just the content inside <answer> tags.
+    """
+    answer_match = re.search(r"<answer>(.*?)</answer>", solution_str, flags=re.I|re.S)
+    if answer_match:
+        return answer_match.group(1).strip()
+    return ""
 
 def extract_bounding_boxes_from_answer(solution_str: str) -> List[List[float]]:
     """
