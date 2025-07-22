@@ -51,7 +51,53 @@ The IOU reward function computes the Intersection over Union between predicted a
 - **Correct "no finding"**: 0.8 score (when ground truth is empty and model says "no abnormalities")
 - **Incorrect predictions**: 0.0 score (false positives or false negatives) 
 
+## Data parquet creation
+
+### Option 1: Fast Pre-filtering (Recommended for large datasets)
+
+For datasets with >100k samples, use the fast version that pre-filters based on text length:
+
+```bash
+cd examples/data_preprocess
+python3 llava_json_to_verl_iou_fast.py \
+  --json_path /path/to/your/all_train_llava.json \
+  --local_dir ./data \
+  --dataset_filter vindr-cxr \
+  --batch_size 5000
+```
+
+This script pre-filters samples with >8192 characters (~2048 tokens) during data creation, eliminating the need for slow multimodal filtering during training.
+
+### Option 2: Standard Processing
+
+For smaller datasets or when you need exact token counting:
+
+```bash
+cd examples/data_preprocess
+python3 llava_json_to_verl_iou_robust.py \
+  --json_path /path/to/your/all_train_llava.json \
+  --local_dir ./data \
+  --dataset_filter vindr-cxr \
+  --batch_size 5000
+```
+
+Both scripts will:
+- Filter for grounding tasks (samples containing bounding boxes)
+- Extract ground truth bounding boxes from GPT responses
+- Handle "no finding" cases appropriately
+- Create proper VERL format with `prompt`, `images`, `reward_model`, etc.
+- Process data in batches to avoid memory issues
+
 ## Slurm script 
+
+### Fast Training (Recommended)
+For faster startup, use the script that disables slow multimodal filtering:
+
+```bash
+sbatch jobs/single_node_fast.sh
+```
+
+### Standard Training
 You will find what worked for me until now for running GRPO in `jobs` folder. 
 
 ## Checkpoint conversion to HF
