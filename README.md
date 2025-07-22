@@ -40,8 +40,10 @@ python examples/data_preprocess/convert_llava_to_verl_iou.py /path/to/val_vindr_
 ## Reward function 
 The reward function that worked for me using BLEU metric was created here: `custom_rewards/bleu_reward.py`. For grounding tasks with bounding boxes, an IOU (Intersection over Union) reward function is available at `custom_reward/iou_reward.py`. You can create other reward files, always specifying the name of the function that calls it (currently `compute_score` in the training scripts).
 
-### IOU Reward for Grounding Tasks
-The IOU reward function computes the Intersection over Union between predicted and ground truth bounding boxes. It expects:
+### Reward Functions for Medical Grounding
+
+#### 📊 Basic IOU Reward (`custom_reward/iou_reward.py`)
+Simple spatial accuracy evaluation:
 - Ground truth: List of bounding boxes in format `[[x1, y1, x2, y2], ...]` or empty list `[]` for "no finding" cases
 - Model output: Text containing bounding boxes in the `<answer>` section with format `[x1, y1, x2, y2]`
 
@@ -49,7 +51,29 @@ The IOU reward function computes the Intersection over Union between predicted a
 - **Perfect box match**: 1.0 score
 - **Partial box overlap**: IOU score (0.0-1.0 based on overlap)
 - **Correct "no finding"**: 0.8 score (when ground truth is empty and model says "no abnormalities")
-- **Incorrect predictions**: 0.0 score (false positives or false negatives) 
+- **Incorrect predictions**: 0.0 score (false positives or false negatives)
+
+#### 🧠 Enhanced Medical Reward (`custom_reward/enhanced_medical_reward.py`)
+**Inspired by "Enhancing Abnormality Grounding for Vision Language Models with Knowledge Descriptions" (arXiv:2503.03278)**
+
+Multi-criteria evaluation combining:
+1. **Spatial Accuracy** (40%/30%): IOU with anatomical importance weighting
+2. **Semantic Understanding** (30%/40%): Medical terminology and anatomical awareness
+3. **Clinical Reasoning** (20%): Quality of diagnostic thinking process
+4. **Clinical Relevance** (10%): Actionability and specificity of findings
+
+**Key Features:**
+- **Knowledge Decomposition**: Breaks down medical concepts into fundamental attributes
+- **Anatomical Context**: Weights findings by clinical importance (heart=1.0, lung=0.9, etc.)
+- **Severity Weighting**: Different abnormalities have different clinical significance
+- **Reasoning Evaluation**: Analyzes `<think>` content for systematic approach, differential diagnosis
+- **Fallback Safety**: Reverts to basic IOU if enhanced scoring fails
+
+**Medical Knowledge Base:**
+- 5 anatomical regions with importance weights
+- 7 abnormality types with severity scores
+- Visual descriptors (size, shape, density, location)
+- Clinical reasoning quality indicators 
 
 ## Data parquet creation
 
@@ -90,15 +114,37 @@ Both scripts will:
 
 ## Slurm script 
 
-### Fast Training (Recommended)
-For faster startup, use the script that disables slow multimodal filtering:
+### Choosing Your Reward Function
 
+#### Quick Setup with Enhanced Medical Reward (Recommended)
 ```bash
-sbatch jobs/single_node_fast.sh
+# Generate SLURM scripts for both reward functions
+python3 custom_reward/reward_config.py
+
+# Use enhanced medical reward (best for clinical applications)
+sbatch jobs/single_node_enhanced.sh
+
+# Or use basic IOU reward (faster, good for testing)
+sbatch jobs/single_node_basic.sh
 ```
 
-### Standard Training
-You will find what worked for me until now for running GRPO in `jobs` folder. 
+#### Manual Configuration
+In your SLURM script, set:
+```bash
+# For enhanced medical reward
+custom_reward_function.path=$WORK_DIR/custom_reward/enhanced_medical_reward.py
+
+# For basic IOU reward  
+custom_reward_function.path=$WORK_DIR/custom_reward/iou_reward.py
+```
+
+#### Fast Training Options
+For faster startup, all scripts disable slow multimodal filtering:
+- `data.filter_overlong_prompts=false`
+- Uses pre-filtered data from `llava_json_to_verl_iou_fast.py`
+
+### Legacy Scripts
+You will find the original scripts in `jobs` folder. 
 
 ## Checkpoint conversion to HF
 ```
