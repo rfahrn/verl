@@ -7,6 +7,8 @@ python examples/data_preprocess/mimic_mm.py /path/to/dataset.json --local_dir SC
 ```
 
 ### For grounding tasks (IOU reward):
+
+**Option 1: Process directly from LLaVA JSON**
 ```
 # For all grounding tasks in the dataset:
 python examples/data_preprocess/grounding_iou.py /path/to/dataset.json --local_dir SCRATCH/<username>/data/grounding_iou
@@ -16,6 +18,15 @@ python examples/data_preprocess/grounding_iou.py /path/to/dataset.json --local_d
 
 # Alternative VinDr-specific script:
 python examples/data_preprocess/vindr_grounding_iou.py /path/to/dataset.json --local_dir SCRATCH/<username>/data/vindr_grounding_iou
+```
+
+**Option 2: Convert existing LLaVA-format parquet files to VERL format**
+```
+# If you already have LLaVA format parquet files (like train_vindr_grounding_iou.parquet):
+python examples/data_preprocess/convert_llava_to_verl_iou.py /path/to/train_vindr_grounding_iou.parquet --output_dir SCRATCH/<username>/data/verl_grounding --split_name train
+
+# Also convert validation set if you have it:
+python examples/data_preprocess/convert_llava_to_verl_iou.py /path/to/val_vindr_grounding_iou.parquet --output_dir SCRATCH/<username>/data/verl_grounding --split_name val
 ```
 
 ## Reward function 
