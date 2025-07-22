@@ -90,12 +90,8 @@ def convert_sample_to_verl(example, idx, split):
     if not is_grounding_task(conversations):
         return None
     
-    # Create VERL image entry
-    img_entry = {
-        "image": f"file://{img_path}",
-        "resized_height": 512,
-        "resized_width": 512
-    }
+    # VERL expects images as paths in a separate field
+    # The images field should contain the actual image paths/objects
     
     # Convert conversations to VERL prompt format
     processed_prompt_msgs = []
@@ -144,10 +140,11 @@ def convert_sample_to_verl(example, idx, split):
             return None  # Skip if it's not a clear "no finding" case
     
     # Create VERL format sample
+    # VERL expects images as a separate field with image paths
     verl_sample = {
         "data_source": DATA_SOURCE,
         "prompt": processed_prompt_msgs,
-        "images": [img_entry],
+        "images": [img_path],  # VERL expects list of image paths, not objects
         "ability": ABILITY,
         "reward_model": {
             "style": "iou",

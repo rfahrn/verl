@@ -19,6 +19,10 @@ python examples/data_preprocess/llava_json_to_verl_iou_robust.py /path/to/all_tr
 # Adjust batch size if you have memory issues:
 python examples/data_preprocess/llava_json_to_verl_iou_robust.py /path/to/all_train_llava.json --local_dir SCRATCH/<username>/data/verl_grounding_iou --batch_size 5000
 
+**Important**: Make sure your SLURM script uses the correct configuration:
+- `data.image_key=images` (not `image`)
+- `custom_reward_function.path=$WORK_DIR/custom_reward/iou_reward.py` (note: `custom_reward` not `custom_rewards`)
+
 # Alternative scripts for other formats:
 python examples/data_preprocess/grounding_iou.py /path/to/dataset.json --local_dir SCRATCH/<username>/data/grounding_iou
 python examples/data_preprocess/vindr_grounding_iou.py /path/to/dataset.json --local_dir SCRATCH/<username>/data/vindr_grounding_iou
