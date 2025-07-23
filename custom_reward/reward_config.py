@@ -10,6 +10,7 @@ from typing import Dict, Any
 REWARD_FUNCTIONS = {
     "basic_iou": "custom_reward/iou_reward.py",
     "giou": "custom_reward/giou_reward.py",
+    "map": "custom_reward/map_reward.py",
     "enhanced_medical": "custom_reward/enhanced_medical_reward.py"
 }
 

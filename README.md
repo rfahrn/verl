@@ -42,6 +42,8 @@ The reward function that worked for me using BLEU metric was created here: `cust
 
 ### Reward Functions for Medical Grounding
 
+We provide multiple reward functions for different evaluation needs:
+
 #### 📊 Basic IOU Reward (`custom_reward/iou_reward.py`)
 Simple spatial accuracy evaluation:
 - Ground truth: List of bounding boxes in format `[[x1, y1, x2, y2], ...]` or empty list `[]` for "no finding" cases
@@ -71,6 +73,26 @@ Where C is the smallest box enclosing both predicted and ground truth boxes.
 **Example advantage:**
 - IoU: Both `[0.1,0.1,0.3,0.3]` and `[0.4,0.4,0.6,0.6]` vs GT `[0.7,0.7,0.9,0.9]` → 0.0
 - GIoU: Closer box gets -0.680, distant box gets -0.875 (provides learning direction!)
+
+#### 🎯 mAP Reward (`custom_reward/map_reward.py`) - **Industry Standard**
+**Based on COCO evaluation methodology - comprehensive multi-threshold assessment**
+
+Implements mean Average Precision (mAP) across multiple IoU thresholds for robust evaluation:
+
+**Key Features:**
+- **Multi-threshold evaluation**: mAP@[0.5:0.05:0.95] (10 IoU thresholds from 0.5 to 0.95)
+- **Precision-Recall curves**: Full AP calculation with 101-point interpolation (COCO standard)
+- **Industry standard**: Same metric used in COCO, PASCAL VOC, and major detection competitions
+- **Comprehensive metrics**: AP@0.50, AP@0.75, precision, recall, and detailed breakdowns
+- **Robust assessment**: Handles varying detection quality gracefully
+
+**Scoring Breakdown:**
+- **Base Score**: mAP@[0.5:0.05:0.95] (primary metric)
+- **Precision Bonus**: 0.1 × Precision@0.50 (clinical relevance - avoid false positives)
+- **Recall Bonus**: 0.1 × Recall@0.50 (don't miss findings)
+- **False Positive Penalty**: 0.05 × FP_rate (reduce noise)
+
+**Best for:** Research, benchmarking, publication-quality evaluation, detailed performance analysis
 
 #### 🧠 Enhanced Medical Reward (`custom_reward/enhanced_medical_reward.py`)
 **Inspired by "Enhancing Abnormality Grounding for Vision Language Models with Knowledge Descriptions" (arXiv:2503.03278)**
@@ -143,6 +165,9 @@ python3 custom_reward/reward_config.py
 # Recommended: GIoU reward (simple improvement over IoU)
 sbatch jobs/single_node_giou.sh
 
+# Industry Standard: mAP reward (comprehensive evaluation)
+sbatch jobs/single_node_map.sh
+
 # Advanced: Enhanced medical reward (best for clinical applications)
 sbatch jobs/single_node_enhanced.sh
 
@@ -153,13 +178,16 @@ sbatch jobs/single_node_basic.sh
 #### Manual Configuration
 In your SLURM script, set:
 ```bash
-# For GIoU reward (recommended)
+# For GIoU reward (recommended for general use)
 custom_reward_function.path=$WORK_DIR/custom_reward/giou_reward.py
 
-# For enhanced medical reward
+# For mAP reward (industry standard evaluation)
+custom_reward_function.path=$WORK_DIR/custom_reward/map_reward.py
+
+# For enhanced medical reward (clinical applications)
 custom_reward_function.path=$WORK_DIR/custom_reward/enhanced_medical_reward.py
 
-# For basic IOU reward  
+# For basic IOU reward (baseline)
 custom_reward_function.path=$WORK_DIR/custom_reward/iou_reward.py
 ```
 
