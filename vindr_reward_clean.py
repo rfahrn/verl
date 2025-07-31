@@ -1,12 +1,14 @@
 # Copyright 2025 – Apache-2.0
 """
-VinDR-CXR fuzzy mAP reward function for multi-box grounding.
-Uses continuous IoU-based scoring instead of binary thresholds.
+VinDR-CXR fuzzy multi-box reward function for grounding.
+Handles multiple predicted boxes vs multiple ground truth boxes.
+Uses optimal assignment with continuous IoU-based scoring.
 
-Fuzzy Scoring:
-- IoU 0.1 → score 0.1 (minimal match)
-- IoU 0.5 → score 0.6 (good match) 
-- IoU 1.0 → score 1.0 (perfect match)
+Multi-box Fuzzy Scoring:
+- Creates IoU matrix between all pred/gt box pairs
+- Greedy assignment (each box matched at most once)
+- IoU 0.1 → score 0.1, IoU 0.5 → score 0.6, IoU 1.0 → score 1.0
+- Final score: Fuzzy F1 with penalties for unmatched boxes
 """
 import re
 
@@ -40,62 +42,70 @@ def extract_predicted_coords(response_str):
     
     return [[float(x1), float(y1), float(x2), float(y2)] for x1, y1, x2, y2 in coordinates]
 
-def calculate_fuzzy_map(pred_coords, gt_coords, min_iou=0.1):
-    """Calculate fuzzy mAP with continuous IoU-based scoring."""
+def calculate_fuzzy_multibox_score(pred_coords, gt_coords, min_iou=0.1):
+    """Calculate fuzzy multi-box score with optimal assignment."""
     if not gt_coords and not pred_coords:
         return 1.0  # Perfect "No finding" case
     if not gt_coords or not pred_coords:
         return 0.0  # Missing predictions or ground truth
     
-    # Match predictions to ground truth with fuzzy scoring
-    matches = []
+    # Create IoU matrix: pred_boxes x gt_boxes
+    iou_matrix = []
     for pred_box in pred_coords:
-        best_iou = max((calculate_iou(pred_box, gt_box) for gt_box in gt_coords), default=0.0)
-        best_gt_idx = next((i for i, gt_box in enumerate(gt_coords) 
-                           if calculate_iou(pred_box, gt_box) == best_iou), -1)
-        
-        # Fuzzy match quality based on IoU
-        if best_iou >= min_iou:
-            # Continuous scoring: IoU 0.1->0.1, IoU 0.5->0.6, IoU 1.0->1.0
-            fuzzy_score = (best_iou - min_iou) / (1.0 - min_iou) * 0.9 + 0.1
-            matches.append((best_iou, best_gt_idx, fuzzy_score))
-        else:
-            matches.append((best_iou, -1, 0.0))  # No match
+        iou_row = [calculate_iou(pred_box, gt_box) for gt_box in gt_coords]
+        iou_matrix.append(iou_row)
     
-    # Sort by IoU confidence
-    matches.sort(key=lambda x: x[0], reverse=True)
+    # Simple greedy assignment (can be replaced with Hungarian algorithm for optimal)
+    assigned_gt = set()
+    assigned_pred = set()
+    total_fuzzy_score = 0.0
     
-    # Calculate fuzzy precision/recall curve
-    weighted_tp, fp = 0.0, 0
-    matched_gt = set()
-    precisions, recalls = [], []
+    # Sort all possible matches by IoU score (greedy approximation)
+    all_matches = []
+    for pred_idx, iou_row in enumerate(iou_matrix):
+        for gt_idx, iou_score in enumerate(iou_row):
+            if iou_score >= min_iou:
+                all_matches.append((iou_score, pred_idx, gt_idx))
     
-    for iou_score, gt_idx, fuzzy_score in matches:
-        if fuzzy_score > 0 and gt_idx not in matched_gt and gt_idx >= 0:
-            weighted_tp += fuzzy_score  # Add fuzzy match weight
-            matched_gt.add(gt_idx)
-        else:
-            fp += 1
-        
-        # Fuzzy precision: weighted true positives / total predictions
-        precision = weighted_tp / (weighted_tp + fp) if (weighted_tp + fp) > 0 else 0.0
-        # Fuzzy recall: weighted matches / total ground truth
-        recall = weighted_tp / len(gt_coords) if gt_coords else 0.0
-        
-        precisions.append(precision)
-        recalls.append(recall)
+    # Sort by IoU descending (best matches first)
+    all_matches.sort(key=lambda x: x[0], reverse=True)
     
-    if not precisions:
-        return 0.0
+    # Assign matches greedily (each pred/gt can only be matched once)
+    matched_pairs = []
+    for iou_score, pred_idx, gt_idx in all_matches:
+        if pred_idx not in assigned_pred and gt_idx not in assigned_gt:
+            # Convert IoU to fuzzy score
+            fuzzy_score = (iou_score - min_iou) / (1.0 - min_iou) * 0.9 + 0.1
+            matched_pairs.append((pred_idx, gt_idx, fuzzy_score))
+            assigned_pred.add(pred_idx)
+            assigned_gt.add(gt_idx)
+            total_fuzzy_score += fuzzy_score
     
-    # Calculate area under fuzzy precision-recall curve
-    # Simple trapezoidal integration
-    ap = 0.0
-    for i in range(1, len(recalls)):
-        if recalls[i] > recalls[i-1]:  # Only count increasing recall
-            ap += (recalls[i] - recalls[i-1]) * (precisions[i] + precisions[i-1]) / 2
+    # Calculate multi-box metrics
+    n_pred = len(pred_coords)
+    n_gt = len(gt_coords)
+    n_matched = len(matched_pairs)
     
-    return min(1.0, ap)  # Cap at 1.0
+    # Fuzzy precision: sum of fuzzy scores / total predictions
+    fuzzy_precision = total_fuzzy_score / n_pred if n_pred > 0 else 0.0
+    
+    # Fuzzy recall: sum of fuzzy scores / total ground truth
+    fuzzy_recall = total_fuzzy_score / n_gt if n_gt > 0 else 0.0
+    
+    # Fuzzy F1 score (harmonic mean)
+    if fuzzy_precision + fuzzy_recall > 0:
+        fuzzy_f1 = (2 * fuzzy_precision * fuzzy_recall) / (fuzzy_precision + fuzzy_recall)
+    else:
+        fuzzy_f1 = 0.0
+    
+    # Penalty for unmatched boxes
+    unmatched_pred_penalty = (n_pred - n_matched) * 0.1  # Small penalty per false positive
+    unmatched_gt_penalty = (n_gt - n_matched) * 0.1     # Small penalty per false negative
+    
+    # Final score: F1 with penalties
+    final_score = fuzzy_f1 - (unmatched_pred_penalty + unmatched_gt_penalty) / max(n_pred, n_gt)
+    
+    return max(0.0, min(1.0, final_score))  # Clamp to [0, 1]
 
 def compute_score(data_source, solution_str, ground_truth, extra_info=None):
     """VERL-compliant reward function for VinDR-CXR multi-box grounding."""
@@ -119,8 +129,8 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):
         if not isinstance(ground_truth, list):
             return 0.1  # Fallback for unexpected format
         
-        # Calculate fuzzy mAP score (main metric)
-        map_score = calculate_fuzzy_map(pred_coords, ground_truth)
+        # Calculate fuzzy multi-box score (main metric)
+        multibox_score = calculate_fuzzy_multibox_score(pred_coords, ground_truth)
         
         # Format bonuses
         format_bonus = 0.0
@@ -129,7 +139,7 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):
         if "<answer>" in solution_str.lower():
             format_bonus += 0.05
         
-        return min(1.0, max(0.0, map_score + format_bonus))
+        return min(1.0, max(0.0, multibox_score + format_bonus))
         
     except Exception as e:
         print(f"VinDR reward error: {e}")
