@@ -107,7 +107,7 @@ def calculate_fuzzy_multibox_score(pred_coords, gt_coords, min_iou=0.1):
 
     return max(0.0, min(1.0, final_score))  # Clamp to [0, 1]
 
-def compute_score(data_source, solution_str, ground_truth, extra_info=None):  # ← FIXED: Added "def"
+def compute_score(data_source, solution_str, ground_truth, extra_info=None):
     """VERL-compliant reward function for VinDR-CXR multi-box grounding."""
     if data_source != "vindr_grpo":
         return 0.0
@@ -115,19 +115,26 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):  # 
     try:
         pred_coords = extract_predicted_coords(solution_str)
 
-        # Handle special ground truth cases
-        if ground_truth == "NO_FINDING":
+        # Check if this is a "No finding" case using extra_info
+        is_no_finding = False
+        if extra_info and isinstance(extra_info, dict):
+            is_no_finding = extra_info.get("has_no_finding", False)
+        
+        # Handle "No finding" cases
+        if is_no_finding or (isinstance(ground_truth, list) and len(ground_truth) == 0):
             no_finding_mentioned = any(phrase in solution_str.lower()
                                      for phrase in ["no finding", "no abnormalities", "clear"])
             if not pred_coords and no_finding_mentioned:
                 return 1.0  # Perfect "no finding" case
             return 0.1 if pred_coords else 0.7  # Penalty for false positives
 
-        if ground_truth == "PARSING_ERROR":
-            return 0.1 if solution_str.strip() else 0.0
-
+        # Ensure ground_truth is a list
         if not isinstance(ground_truth, list):
             return 0.1  # Fallback for unexpected format
+
+        # Handle empty ground truth (parsing errors)
+        if len(ground_truth) == 0 and not is_no_finding:
+            return 0.1 if solution_str.strip() else 0.0
 
         # Calculate fuzzy multi-box score (main metric)
         multibox_score = calculate_fuzzy_multibox_score(pred_coords, ground_truth)

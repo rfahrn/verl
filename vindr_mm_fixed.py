@@ -17,9 +17,9 @@ def extract_coordinates(solution_str):
 
     if not coordinates:
         if "no abnormalities" in solution_str.lower() or "no finding" in solution_str.lower():
-            return "NO_FINDING"
-        return "PARSING_ERROR"
-
+            return []  # Empty list for "No finding" cases
+        return []  # Empty list for parsing errors too
+    
     # Convert to coordinate list for mAP calculation
     return [[float(x1), float(y1), float(x2), float(y2)] for x1, y1, x2, y2 in coordinates]
 
@@ -43,8 +43,14 @@ def make_map_fn(split):  # ← FIXED: Added "make_" prefix
         }
 
         # Extract coordinates for reward function
-        ground_truth_coords = extract_coordinates(example["conversations"][1]["value"])
-
+        raw_answer = example["conversations"][1]["value"]
+        ground_truth_coords = extract_coordinates(raw_answer)
+        
+        # Determine case type for reward function
+        has_no_finding = ("no abnormalities" in raw_answer.lower() or 
+                         "no finding" in raw_answer.lower() or
+                         "No finding" in example.get("labels", []))
+        
         return {
             "data_source" : DATA_SOURCE,
             "prompt"      : [prompt_msg],              # same schema as Geo3K example
@@ -52,14 +58,16 @@ def make_map_fn(split):  # ← FIXED: Added "make_" prefix
             "ability"     : ABILITY,
             "reward_model": {
                 "style": "rule",
-                "ground_truth": ground_truth_coords      # coordinates for mAP calculation
+                "ground_truth": ground_truth_coords      # Always a list now
             },
             "extra_info"  : {                          # anything you want to keep
                 "id":    example.get("id", f"{split}_{idx}"),
                 "split": split,
                 "index": idx,
                 "labels": example.get("labels", []),
-                "raw_answer": example["conversations"][1]["value"]
+                "raw_answer": raw_answer,
+                "has_no_finding": has_no_finding,       # Flag for reward function
+                "coord_count": len(ground_truth_coords)  # Number of coordinates found
             },
         }
     return proc
