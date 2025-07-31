@@ -14,8 +14,12 @@ import re
 
 def calculate_iou(box1, box2):
     """Calculate IoU between two bounding boxes."""
-    x1_1, y1_1, x2_1, y2_1 = box1
-    x1_2, y1_2, x2_2, y2_2 = box2
+    try:
+        x1_1, y1_1, x2_1, y2_1 = box1
+        x1_2, y1_2, x2_2, y2_2 = box2
+    except ValueError as e:
+        print(f"IoU unpacking error - box1: {box1}, box2: {box2}")
+        return 0.0
 
     x1_inter, y1_inter = max(x1_1, x1_2), max(y1_1, y1_2)
     x2_inter, y2_inter = min(x2_1, x2_2), min(y2_1, y2_2)
@@ -40,7 +44,12 @@ def extract_predicted_coords(response_str):
     coord_pattern = r'\[([0-9.]+),\s*([0-9.]+),\s*([0-9.]+),\s*([0-9.]+)\]'
     coordinates = re.findall(coord_pattern, text)
 
-    return [[float(x1), float(y1), float(x2), float(y2)] for x1, y1, x2, y2 in coordinates]
+    try:
+        result = [[float(x1), float(y1), float(x2), float(y2)] for x1, y1, x2, y2 in coordinates]
+        return result
+    except ValueError as e:
+        print(f"Coordinate parsing error - coordinates: {coordinates}")
+        return []
 
 def calculate_fuzzy_multibox_score(pred_coords, gt_coords, min_iou=0.1):
     """Calculate fuzzy multi-box score with optimal assignment."""
@@ -119,11 +128,16 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):
         if isinstance(ground_truth, dict):
             gt_coords = ground_truth.get("coordinates", [])
             is_no_finding = ground_truth.get("has_no_finding", False)
+            print(f"DEBUG: gt_coords = {gt_coords}, type = {type(gt_coords)}")
+            if gt_coords:
+                print(f"DEBUG: First gt coord = {gt_coords[0]}, type = {type(gt_coords[0])}")
         # Fallback: handle ground truth as list (old format)
         elif isinstance(ground_truth, list):
             gt_coords = ground_truth
             is_no_finding = len(gt_coords) == 0
+            print(f"DEBUG: gt_coords (list) = {gt_coords}")
         else:
+            print(f"DEBUG: Unexpected ground_truth type: {type(ground_truth)}, value: {ground_truth}")
             return 0.1  # Fallback for unexpected format
 
         # Handle "No finding" cases
