@@ -141,7 +141,7 @@ reward_model:
 
 # Custom Reward Function Configuration
 custom_reward_function:
-  path: vindr_reward_simple.py  # Path to your custom reward function
+  path: vindr_reward_clean.py  # Path to your custom reward function
   name: compute_score  # Function name (default)
 
 # Algorithm Configuration
