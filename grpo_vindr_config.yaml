@@ -1,0 +1,179 @@
+# GRPO Configuration for VinDR-CXR Medical Grounding
+# Follows VERL documentation exactly
+
+# Data Configuration
+data:
+  tokenizer: null
+  train_files: ~/data/vindr_grpo/train.parquet
+  val_files: ~/data/vindr_grpo/val.parquet
+  prompt_key: prompt
+  max_prompt_length: 2048
+  max_response_length: 1024
+  train_batch_size: 32  # Global batch size for prompts
+  return_raw_input_ids: False
+  return_raw_chat: False
+  return_full_prompt: False
+  shuffle: True
+  filter_overlong_prompts: False
+  filter_overlong_prompts_workers: 1
+  truncation: error
+  image_key: images  # Key for multimodal images
+  trust_remote_code: True
+  custom_cls:
+    path: null
+    name: null
+
+# Actor/Rollout/Reference Policy Configuration
+actor_rollout_ref:
+  hybrid_engine: True
+  model:
+    path: Qwen/Qwen2.5-VL-7B-Instruct  # Multimodal model for medical images
+    external_lib: null
+    override_config:
+      model_config: {}
+      moe_config:
+        freeze_moe_router: False
+    enable_gradient_checkpointing: False
+    enable_activation_offload: False
+    trust_remote_code: True  # Required for Qwen2.5-VL
+    use_remove_padding: False
+  
+  # Actor Configuration
+  actor:
+    strategy: fsdp
+    ppo_mini_batch_size: 128  # Global mini-batch size for GRPO updates
+    ppo_micro_batch_size_per_gpu: 4  # Micro batch size per GPU
+    use_dynamic_bsz: False
+    ppo_max_token_len_per_gpu: 16384
+    grad_clip: 1.0
+    clip_ratio: 0.2  # GRPO clip range
+    entropy_coeff: 0.0  # Default for VERL v0.3.x+
+    use_kl_loss: True  # CRITICAL: Use KL loss for GRPO (not reward KL penalty)
+    use_torch_compile: True
+    kl_loss_coef: 0.001  # KL loss coefficient for GRPO
+    kl_loss_type: low_var_kl  # KL divergence calculation method
+    ppo_epochs: 2  # Number of GRPO update epochs
+    data_loader_seed: null
+    shuffle: False
+    ulysses_sequence_parallel_size: 1
+    optim:
+      lr: 1e-6
+      lr_warmup_steps: -1
+      lr_warmup_steps_ratio: 0.1
+      min_lr_ratio: 0.0
+      num_cycles: 0.5
+      warmup_style: constant
+      total_training_steps: -1  # Will be set during runtime
+    fsdp_config:
+      wrap_policy:
+        min_num_params: 0
+      param_offload: False
+      optimizer_offload: False
+      fsdp_size: -1
+    checkpoint:
+      save_contents: ['model', 'optimizer', 'extra']
+      load_contents: ['model', 'optimizer', 'extra']
+  
+  # Reference Model Configuration
+  ref:
+    fsdp_config:
+      param_offload: True  # Offload ref model to save memory
+      wrap_policy:
+        min_num_params: 0
+    log_prob_micro_batch_size_per_gpu: 8
+    log_prob_use_dynamic_bsz: False
+    log_prob_max_token_len_per_gpu: 16384
+    ulysses_sequence_parallel_size: 1
+  
+  # Rollout Configuration
+  rollout:
+    name: vllm  # Use vLLM for efficient generation
+    temperature: 1.0
+    top_k: -1
+    top_p: 1.0
+    prompt_length: 2048
+    response_length: 1024
+    dtype: bfloat16
+    gpu_memory_utilization: 0.5
+    ignore_eos: False
+    enforce_eager: True
+    free_cache_engine: True
+    load_format: dummy_dtensor  # For FSDP backend
+    tensor_model_parallel_size: 1
+    max_num_batched_tokens: 8192
+    max_num_seqs: 512
+    log_prob_micro_batch_size_per_gpu: 8
+    log_prob_use_dynamic_bsz: False
+    log_prob_max_token_len_per_gpu: 16384
+    do_sample: True
+    engine_kwargs:
+      vllm:
+        swap_space: null
+        disable_mm_preprocessor_cache: False  # Important for multimodal
+      sglang:
+        attention_backend: null
+    n: 4  # CRITICAL: Group sampling - generate 4 responses per prompt for GRPO
+    val_kwargs:
+      top_k: -1
+      top_p: 1.0
+      temperature: 0.0  # Deterministic for validation
+      n: 1
+      do_sample: False
+    agent:
+      custom_async_server:
+        path: null
+        name: null
+
+# Reward Model Configuration (disabled - using custom reward function)
+reward_model:
+  enable: False
+  model:
+    input_tokenizer: null
+    path: null
+    external_lib: null
+    trust_remote_code: False
+    fsdp_config:
+      min_num_params: 0
+      param_offload: False
+  micro_batch_size_per_gpu: 16
+  max_length: null
+  reward_manager: naive
+
+# Custom Reward Function Configuration
+custom_reward_function:
+  path: vindr_reward_corrected.py  # Path to your custom reward function
+  name: compute_score  # Function name (default)
+
+# Algorithm Configuration
+algorithm:
+  gamma: 1.0
+  lam: 1.0
+  adv_estimator: grpo  # CRITICAL: Use GRPO instead of GAE
+  use_kl_in_reward: False  # Don't use KL in reward (use actor.use_kl_loss instead)
+  kl_penalty: kl
+  kl_ctrl:
+    type: fixed
+    kl_coef: 0.005
+    horizon: 10000
+    target_kl: 0.1
+
+# Trainer Configuration
+trainer:
+  total_epochs: 5
+  project_name: vindr_medical_grounding
+  experiment_name: qwen2.5vl_7b_grpo_vindr
+  logger: ['console', 'wandb']
+  log_val_generations: 5  # Log some validation generations
+  nnodes: 1
+  n_gpus_per_node: 4
+  save_freq: 1  # Save every epoch
+  val_before_train: True
+  test_freq: 1  # Validate every epoch
+  critic_warmup: 0
+  default_hdfs_dir: null
+  default_local_dir: checkpoints/${trainer.project_name}/${trainer.experiment_name}
+  resume_mode: auto
+  resume_from_path: null
+  remove_previous_ckpt_in_save: False
+  del_local_ckpt_after_load: False
+  ray_wait_register_center_timeout: 300
