@@ -115,29 +115,31 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):
     try:
         pred_coords = extract_predicted_coords(solution_str)
 
-        # Check if this is a "No finding" case using extra_info
-        is_no_finding = False
-        if extra_info and isinstance(extra_info, dict):
-            is_no_finding = extra_info.get("has_no_finding", False)
-        
+        # Handle ground truth as dict (new format)
+        if isinstance(ground_truth, dict):
+            gt_coords = ground_truth.get("coordinates", [])
+            is_no_finding = ground_truth.get("has_no_finding", False)
+        # Fallback: handle ground truth as list (old format)
+        elif isinstance(ground_truth, list):
+            gt_coords = ground_truth
+            is_no_finding = len(gt_coords) == 0
+        else:
+            return 0.1  # Fallback for unexpected format
+
         # Handle "No finding" cases
-        if is_no_finding or (isinstance(ground_truth, list) and len(ground_truth) == 0):
+        if is_no_finding:
             no_finding_mentioned = any(phrase in solution_str.lower()
                                      for phrase in ["no finding", "no abnormalities", "clear"])
             if not pred_coords and no_finding_mentioned:
                 return 1.0  # Perfect "no finding" case
             return 0.1 if pred_coords else 0.7  # Penalty for false positives
 
-        # Ensure ground_truth is a list
-        if not isinstance(ground_truth, list):
-            return 0.1  # Fallback for unexpected format
-
-        # Handle empty ground truth (parsing errors)
-        if len(ground_truth) == 0 and not is_no_finding:
+        # Handle empty coordinates (parsing errors)
+        if len(gt_coords) == 0:
             return 0.1 if solution_str.strip() else 0.0
 
         # Calculate fuzzy multi-box score (main metric)
-        multibox_score = calculate_fuzzy_multibox_score(pred_coords, ground_truth)
+        multibox_score = calculate_fuzzy_multibox_score(pred_coords, gt_coords)
 
         # Format bonuses
         format_bonus = 0.0

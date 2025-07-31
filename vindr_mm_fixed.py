@@ -46,10 +46,17 @@ def make_map_fn(split):  # ← FIXED: Added "make_" prefix
         raw_answer = example["conversations"][1]["value"]
         ground_truth_coords = extract_coordinates(raw_answer)
         
-        # Determine case type for reward function
+        # Create self-contained ground truth structure
         has_no_finding = ("no abnormalities" in raw_answer.lower() or 
                          "no finding" in raw_answer.lower() or
                          "No finding" in example.get("labels", []))
+        
+        # Ground truth as dict with all needed info
+        ground_truth_data = {
+            "coordinates": ground_truth_coords,
+            "has_no_finding": has_no_finding,
+            "raw_answer": raw_answer  # Keep for debugging
+        }
         
         return {
             "data_source" : DATA_SOURCE,
@@ -58,16 +65,14 @@ def make_map_fn(split):  # ← FIXED: Added "make_" prefix
             "ability"     : ABILITY,
             "reward_model": {
                 "style": "rule",
-                "ground_truth": ground_truth_coords      # Always a list now
+                "ground_truth": ground_truth_data        # Self-contained dict
             },
             "extra_info"  : {                          # anything you want to keep
                 "id":    example.get("id", f"{split}_{idx}"),
                 "split": split,
                 "index": idx,
                 "labels": example.get("labels", []),
-                "raw_answer": raw_answer,
-                "has_no_finding": has_no_finding,       # Flag for reward function
-                "coord_count": len(ground_truth_coords)  # Number of coordinates found
+                "coord_count": len(ground_truth_coords)
             },
         }
     return proc
