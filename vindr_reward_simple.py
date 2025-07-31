@@ -51,10 +51,10 @@ def extract_coordinates_from_response(response_str):
     
     return coord_list
 
-def calculate_localization_score(pred_coords, gt_coords, iou_threshold=0.5):
+def calculate_map_score(pred_coords, gt_coords, iou_threshold=0.5):
     """
-    Calculate localization score based on IoU matching.
-    Priority: Localization accuracy for grounding task.
+    Calculate mAP (mean Average Precision) for multi-box detection.
+    Proper metric for multi-label, multi-box grounding tasks.
     """
     if not gt_coords and not pred_coords:
         return 1.0  # Perfect match for "No finding" cases
@@ -63,42 +63,68 @@ def calculate_localization_score(pred_coords, gt_coords, iou_threshold=0.5):
         return 0.0  # False positives
     
     if not pred_coords:
-        return 0.0  # False negatives
+        return 0.0  # False negatives (missed all ground truth boxes)
     
-    # IoU-based matching (greedy assignment)
-    matched_gt = [False] * len(gt_coords)
-    matched_pred = [False] * len(pred_coords)
-    total_matches = 0
-    
-    for i, pred_box in enumerate(pred_coords):
+    # For each predicted box, find best matching ground truth box
+    matches = []
+    for pred_box in pred_coords:
         best_iou = 0.0
         best_gt_idx = -1
         
-        for j, gt_box in enumerate(gt_coords):
-            if matched_gt[j]:
-                continue
-            
+        for gt_idx, gt_box in enumerate(gt_coords):
             iou = calculate_iou(pred_box, gt_box)
-            if iou > best_iou and iou >= iou_threshold:
+            if iou > best_iou:
                 best_iou = iou
-                best_gt_idx = j
+                best_gt_idx = gt_idx
         
-        if best_gt_idx >= 0:
-            matched_gt[best_gt_idx] = True
-            matched_pred[i] = True
-            total_matches += 1
+        # Record match if IoU exceeds threshold
+        if best_iou >= iou_threshold:
+            matches.append((best_iou, best_gt_idx, True))  # True positive
+        else:
+            matches.append((best_iou, -1, False))  # False positive
     
-    # Calculate precision and recall
-    precision = total_matches / len(pred_coords) if pred_coords else 0.0
-    recall = total_matches / len(gt_coords) if gt_coords else 0.0
+    # Sort matches by confidence (IoU score) in descending order
+    matches.sort(key=lambda x: x[0], reverse=True)
     
-    # F1 score as localization metric
-    if precision + recall > 0:
-        f1 = (2 * precision * recall) / (precision + recall)
-    else:
-        f1 = 0.0
+    # Calculate precision and recall at each point
+    tp = 0  # True positives
+    fp = 0  # False positives
+    matched_gt = set()
     
-    return f1
+    precisions = []
+    recalls = []
+    
+    for iou_score, gt_idx, is_match in matches:
+        if is_match and gt_idx not in matched_gt:
+            tp += 1
+            matched_gt.add(gt_idx)
+        else:
+            fp += 1
+        
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / len(gt_coords) if gt_coords else 0.0
+        
+        precisions.append(precision)
+        recalls.append(recall)
+    
+    # Calculate Average Precision (AP) using interpolation
+    if not precisions:
+        return 0.0
+    
+    # Add boundary points
+    precisions = [0.0] + precisions + [0.0]
+    recalls = [0.0] + recalls + [1.0]
+    
+    # Interpolate precision values
+    for i in range(len(precisions) - 2, -1, -1):
+        precisions[i] = max(precisions[i], precisions[i + 1])
+    
+    # Calculate area under precision-recall curve
+    ap = 0.0
+    for i in range(1, len(recalls)):
+        ap += (recalls[i] - recalls[i - 1]) * precisions[i]
+    
+    return ap
 
 def compute_score(data_source, solution_str, ground_truth, extra_info=None):
     """
@@ -146,8 +172,8 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):
             # Fallback: try to parse ground truth as string
             return 0.1
         
-        # Calculate localization score (PRIORITY: this is the main metric)
-        localization_score = calculate_localization_score(pred_coords, gt_coords)
+        # Calculate mAP score (PRIORITY: this is the main metric for multi-box grounding)
+        map_score = calculate_map_score(pred_coords, gt_coords)
         
         # Format bonuses for proper reasoning structure
         format_bonus = 0.0
@@ -165,8 +191,8 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):
         if has_findings_mentioned and not pred_coords and gt_coords:
             consistency_penalty = 0.1  # Mentioned findings but no coordinates
         
-        # Final score: prioritize localization
-        final_score = min(1.0, max(0.0, localization_score + format_bonus - consistency_penalty))
+        # Final score: prioritize mAP (multi-box localization)
+        final_score = min(1.0, max(0.0, map_score + format_bonus - consistency_penalty))
         
         return final_score
         
@@ -187,7 +213,7 @@ def compute_score_coords_only(data_source, solution_str, ground_truth, extra_inf
         if ground_truth == "NO_FINDING":
             return 1.0 if not pred_coords else 0.0
         elif isinstance(ground_truth, list):
-            return calculate_localization_score(pred_coords, ground_truth)
+            return calculate_map_score(pred_coords, ground_truth)
         else:
             return 0.0
     except Exception:
