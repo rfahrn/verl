@@ -47,9 +47,10 @@ def make_map_fn(split):  # ← FIXED: Added "make_" prefix
         ground_truth_coords = extract_coordinates(raw_answer)
         
         # Create self-contained ground truth structure
+        labels = example.get("labels") or []  # Handle None case
         has_no_finding = ("no abnormalities" in raw_answer.lower() or 
                          "no finding" in raw_answer.lower() or
-                         "No finding" in example.get("labels", []))
+                         "No finding" in labels)
         
         # Ground truth as dict with all needed info
         ground_truth_data = {
@@ -71,7 +72,7 @@ def make_map_fn(split):  # ← FIXED: Added "make_" prefix
                 "id":    example.get("id", f"{split}_{idx}"),
                 "split": split,
                 "index": idx,
-                "labels": example.get("labels", []),
+                "labels": labels,
                 "coord_count": len(ground_truth_coords)
             },
         }
