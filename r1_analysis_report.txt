@@ -1,0 +1,72 @@
+
+    ================================================================================
+                        R1 REWARD FUNCTION ANALYSIS REPORT
+    ================================================================================
+    
+    REWARD DISTRIBUTION:
+    ┌─────────────────────────────────────┬──────────────────────────────┐
+    │ Scenario                            │ Reward                       │
+    ├─────────────────────────────────────┼──────────────────────────────┤
+    │ No boxes predicted, no GT boxes     │ 0.2 (NO_BOX_BONUS)          │
+    │ (Correct negative prediction)       │ Small reward for correctness │
+    ├─────────────────────────────────────┼──────────────────────────────┤
+    │ Boxes predicted, but no GT boxes    │ 0.0 (False positives)       │
+    │ (Model hallucinates boxes)          │                              │
+    ├─────────────────────────────────────┼──────────────────────────────┤
+    │ No boxes predicted, GT has boxes    │ 0.0 (Missed detections)     │
+    │ (Model misses findings)             │                              │
+    ├─────────────────────────────────────┼──────────────────────────────┤
+    │ Boxes predicted, GT has boxes       │ mAP@0.5 (0.0 to 1.0)        │
+    │ - Perfect localization              │ → 1.0                        │
+    │ - Good localization (IoU ≥ 0.5)     │ → 0.5 to 1.0                │
+    │ - Poor localization (IoU < 0.5)     │ → 0.0 to 0.5                │
+    │ - Completely wrong                  │ → 0.0                        │
+    └─────────────────────────────────────┴──────────────────────────────┘
+    
+    KEY CHARACTERISTICS:
+    
+    1. IoU Threshold Behavior:
+       - Hard threshold at IoU = 0.5
+       - Below 0.5: Box is considered a false positive (reward = 0)
+       - At or above 0.5: Box is considered a true positive (reward > 0)
+       - This creates a sharp discontinuity in the reward function
+    
+    2. Multiple Box Handling:
+       - Uses Average Precision metric (standard in object detection)
+       - Greedy matching: Each predicted box matches at most one GT box
+       - Order matters: Predictions are processed sequentially
+       - Duplicate predictions hurt precision (counted as false positives)
+    
+    3. Edge Case Behaviors:
+       ✓ Handles negative coordinates correctly
+       ✓ Handles very large coordinates correctly
+       ✗ Zero-area boxes (lines/points) result in IoU = 0
+       ✗ Inverted boxes (x2 < x1 or y2 < y1) may cause issues
+       ✓ Handles multiple predictions for single GT (penalizes extras)
+       ✓ Handles overlapping GT boxes (each matched independently)
+    
+    4. Strengths:
+       - Standard metric (mAP@0.5) widely used in computer vision
+       - Rewards both precision and recall
+       - Handles multi-object scenarios well
+       - Provides small reward for correct "no detection" cases
+    
+    5. Potential Weaknesses:
+       - Hard IoU threshold may be too strict for some applications
+       - No partial credit for IoU < 0.5 (even 0.49 gets 0 reward)
+       - NO_BOX_BONUS (0.2) might encourage false negatives in edge cases
+       - Greedy matching may not find optimal assignment
+    
+    6. Recommended Use Cases:
+       - Object detection tasks with clear bounding boxes
+       - Medical imaging (lesion detection)
+       - Document analysis (text region detection)
+       - Any task where 50% overlap is meaningful threshold
+    
+    7. Not Recommended For:
+       - Tasks requiring precise boundaries (use higher IoU threshold)
+       - Tasks where any overlap is acceptable (use lower threshold)
+       - Segmentation tasks (use pixel-wise metrics instead)
+    
+    ================================================================================
+    
